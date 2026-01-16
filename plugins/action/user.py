@@ -164,11 +164,13 @@ class ActionModule(BaseResourceActionPlugin):
             if operation == 'create' and validated_params.get('state') == 'present':
                 self._display.vvv("🔍 Checking if user already exists (idempotency check)...")
                 try:
-                    # Try to find the user by username
-                    find_result = manager.execute(
+                    # Try to find the user by username using RETRY logic
+                    find_result = self.execute_with_retry(
+                        manager_client=manager,
                         operation='find',
                         module_name=self.MODULE_NAME,
-                        ansible_data={'username': user.username}
+                        data={'username': user.username},
+                        task_vars=task_vars
                     )
                     if find_result and find_result.get('id'):
                         self._display.vvv(f"✅ User '{user.username}' already exists (id={find_result.get('id')}), switching to update")
@@ -180,10 +182,12 @@ class ActionModule(BaseResourceActionPlugin):
             
             # Step 6: Execute via manager
             self._display.vvv(f"📤 Sending '{operation}' request to manager...")
-            manager_result = manager.execute(
+            manager_result = self.execute_with_retry(
+                manager_client=manager,
                 operation=operation,
                 module_name=self.MODULE_NAME,
-                ansible_data=user.__dict__
+                data=user.__dict__,
+                task_vars=task_vars
             )
             
             self._display.vvv("📥 Received result from manager")
@@ -278,14 +282,6 @@ class ActionModule(BaseResourceActionPlugin):
             self._display.vvv("=" * 80)
             
         except Exception as e:
-            self._display.vvv(f"❌ Error in action plugin: {e}")
-            result['failed'] = True
-            result['msg'] = str(e)
-            
-            # Include traceback in verbose mode
-            if self._display.verbosity >= 3:
-                import traceback
-                result['exception'] = traceback.format_exc()
+            return self._handle_exception(e)
         
         return result
-
