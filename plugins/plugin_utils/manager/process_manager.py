@@ -206,7 +206,7 @@ class ProcessManager:
         socket_dir: Path,
         identifier: str,
         process: subprocess.Popen,
-        max_wait: int = 50
+        max_wait: int = 100
     ) -> None:
         """
         Wait for manager process to start and create socket.
