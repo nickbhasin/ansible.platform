@@ -1,0 +1,96 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Generate test username
+  ansible.builtin.set_fact:
+    username: "Gateway-Collection-tests-idle-user-{{ test_id }}"
+
+- name: Manager idle timeout integration tests
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+  vars:
+    ansible_connection: ansible.platform.http
+    ansible_platform_use_persistent_connection: true
+    # Ensure idle configuration is accepted on the gateway config path (subprocess test uses its own short timeout)
+    platform_manager_idle_timeout: 3600
+
+  block:
+    - name: Trigger persistent manager spawn and RPC activity
+      ansible.platform.user:
+        username: "{{ username }}"
+        first_name: IdleTest
+        password: "{{ 65535 | random | to_uuid }}"
+        state: present
+      register: initial_run
+
+    - name: Assert initial user task succeeded
+      ansible.builtin.assert:
+        that:
+          - initial_run is changed
+
+    - name: Verify manager subprocess exits after idle timeout
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ (role_path | default(playbook_dir)) }}/files/idle_shutdown_integration.py"
+      environment:
+        GATEWAY_HOSTNAME: "{{ gateway_hostname }}"
+        GATEWAY_USERNAME: "{{ gateway_username }}"
+        GATEWAY_PASSWORD: "{{ gateway_password }}"
+        GATEWAY_VALIDATE_CERTS: "{{ gateway_validate_certs | bool | lower }}"
+        GATEWAY_REQUEST_TIMEOUT: "{{ gateway_request_timeout | default(60) | string }}"
+        IDLE_TEST_ID: "{{ test_id }}"
+        MANAGER_IDLE_TIMEOUT_SEC: "8"
+        ANSIBLE_PLATFORM_MANAGER_IDLE_POLL_SECONDS: "2"
+      register: idle_check
+      changed_when: false
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Assert idle shutdown check succeeded
+      ansible.builtin.assert:
+        that:
+          - idle_check.rc == 0
+        fail_msg: "Manager did not exit after idle timeout (stderr: {{ idle_check.stderr | default('') }})."
+
+  always:
+    - name: Delete test user
+      ansible.platform.user:
+        username: "{{ username }}"
+        state: absent
+      register: delete_results
+      failed_when:
+        - delete_results is failed
+        - "'404' not in delete_results.msg | default('')"
+      when: username is defined
+
+    - name: Cleanup integration test socket artifacts
+      ansible.builtin.shell: |
+        python3 - <<'PY'
+        import glob
+        import os
+        import tempfile
+        test_id = os.environ["IDLE_TEST_ID"]
+        socket_dir = os.path.join(tempfile.gettempdir(), "ansible_platform")
+        for path in glob.glob(os.path.join(socket_dir, "manager_*idle_integ_%s*" % test_id)):
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+      environment:
+        IDLE_TEST_ID: "{{ test_id }}"
+      register: rm_result
+      changed_when: false
+      failed_when: rm_result.rc != 0
+      vars:
+        ansible_connection: local
+      when: test_id is defined
+...

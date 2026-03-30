@@ -1,0 +1,8 @@
+---
+- name: Verify manager idle scenario completed
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Placeholder verify (checks run in converge)
+      ansible.builtin.debug:
+        msg: "manager_idle_mock converge passed"

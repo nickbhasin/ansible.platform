@@ -2,9 +2,10 @@ import os
 import tempfile
 from pathlib import Path
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import GatewayConfig
 
 
 class TestProcessManagerStaleSocket(TestCase):
@@ -58,3 +59,24 @@ class TestProcessManagerStaleSocket(TestCase):
         ProcessManager.cleanup_old_socket(self.socket_path)
         self.assertFalse(os.path.exists(self.socket_path))
         self.assertFalse(os.path.exists(self.pid_path))
+
+    @patch("ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager.subprocess.Popen")
+    def test_spawn_manager_process_passes_idle_timeout(self, mock_popen):
+        mock_popen.return_value = MagicMock(pid=4242)
+        cfg = GatewayConfig(
+            base_url="https://gw.example",
+            username="u",
+            password="p",
+            idle_timeout=1800.0,
+        )
+        script = Path("/tmp/fake_manager_process.py")
+        ProcessManager.spawn_manager_process(
+            script_path=script,
+            socket_path="/tmp/s.sock",
+            socket_dir="/tmp",
+            identifier="host1",
+            gateway_config=cfg,
+            authkey_b64="YWFh",
+        )
+        cmd = mock_popen.call_args[0][0]
+        self.assertEqual(cmd[-1], "1800.0")

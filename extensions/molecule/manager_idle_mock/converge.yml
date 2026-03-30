@@ -1,0 +1,42 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+- name: Run manager idle shutdown check
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Execute idle shutdown verification script
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ playbook_dir }}/files/idle_shutdown_check.py"
+      environment:
+        GATEWAY_HOSTNAME: "{{ gateway_hostname }}"
+        ANSIBLE_PLATFORM_MANAGER_IDLE_POLL_SECONDS: "1"
+      register: idle_check
+      changed_when: false
+
+    - name: Assert idle shutdown script succeeded
+      ansible.builtin.assert:
+        that:
+          - idle_check.rc == 0
