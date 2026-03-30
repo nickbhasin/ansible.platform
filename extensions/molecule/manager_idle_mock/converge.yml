@@ -28,15 +28,40 @@
     ansible_connection: local
     gateway_hostname: "http://127.0.0.1:8000"
   tasks:
-    # Same parent dir as molecule.yml collections_path: scenario/../../../../../../
-    # so `python3` can resolve `import ansible_collections.ansible.platform` (not automatic for subprocess).
+    # Subprocess `python3` does not use Ansible's collection loader. Flat CI checkouts
+    # (repo root = collection with plugins/) have no ansible_collections/ in the tree;
+    # symlink collection root into a temp ansible_collections/ansible/platform layout.
+    - name: Create ansible_collections namespace for subprocess imports
+      ansible.builtin.file:
+        path: /tmp/molecule-manager-idle-mock-ns/ansible_collections/ansible
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Resolve collection root (playbook_dir is .../manager_idle_mock)
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../../../"
+      register: coll_root_stat
+      vars:
+        ansible_connection: local
+
+    - name: Symlink collection root to ansible.platform import path
+      ansible.builtin.file:
+        src: "{{ coll_root_stat.stat.path }}"
+        dest: /tmp/molecule-manager-idle-mock-ns/ansible_collections/ansible/platform
+        state: link
+        force: true
+      vars:
+        ansible_connection: local
+
     - name: Execute idle shutdown verification script
       ansible.builtin.command:
         argv:
           - python3
           - "{{ playbook_dir }}/files/idle_shutdown_check.py"
       environment:
-        PYTHONPATH: "{{ playbook_dir }}/../../../../../../"
+        PYTHONPATH: /tmp/molecule-manager-idle-mock-ns
         GATEWAY_HOSTNAME: "{{ gateway_hostname }}"
         ANSIBLE_PLATFORM_MANAGER_IDLE_POLL_SECONDS: "1"
       register: idle_check
@@ -49,5 +74,7 @@
       ansible.builtin.assert:
         that:
           - idle_check.rc == 0
+        fail_msg: "{{ idle_check.stderr | default('') }} {{ idle_check.stdout | default('') }}"
       vars:
         ansible_connection: local
+...

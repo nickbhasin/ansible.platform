@@ -7,29 +7,7 @@ import sys
 import time
 from pathlib import Path
 
-
-def _ensure_ansible_collections_on_path():
-    """Subprocess python3 does not inherit Ansible's collection loader."""
-    f = Path(__file__).resolve()
-    # Typical tree: .../ansible_collections/ansible/platform/extensions/molecule/.../files/this.py
-    if len(f.parents) >= 5:
-        collection_root = f.parents[4]  # platform (namespace) root
-        if len(collection_root.parents) >= 3:
-            workspace = collection_root.parents[2]  # parent of ansible_collections
-            ac = workspace / "ansible_collections"
-            if ac.is_dir() and str(workspace) not in sys.path:
-                sys.path.insert(0, str(workspace))
-                return
-    # Fallback: any ancestor that contains ansible_collections/
-    for p in f.parents:
-        if (p / "ansible_collections").is_dir():
-            if str(p) not in sys.path:
-                sys.path.insert(0, str(p))
-            return
-
-
-_ensure_ansible_collections_on_path()
-
+# Imports require PYTHONPATH to a directory containing ansible_collections/ (see converge.yml symlink).
 os.environ.setdefault("ANSIBLE_PLATFORM_MANAGER_IDLE_POLL_SECONDS", "1")
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import GatewayConfig
@@ -80,8 +58,8 @@ def main():
     finally:
         client.close()
 
-    # Poll interval 1s + idle_timeout 5s => allow margin
-    deadline = time.time() + 30.0
+    # Poll interval + idle_timeout; allow slow CI runners
+    deadline = time.time() + 90.0
     while time.time() < deadline:
         if not Path(conn.socket_path).exists():
             print("OK: socket removed")

@@ -11,3 +11,4 @@
         msg: "manager_idle_mock converge passed"
       vars:
         ansible_connection: local
+...
