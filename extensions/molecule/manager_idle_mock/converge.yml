@@ -28,12 +28,15 @@
     ansible_connection: local
     gateway_hostname: "http://127.0.0.1:8000"
   tasks:
+    # Same parent dir as molecule.yml collections_path: scenario/../../../../../../
+    # so `python3` can resolve `import ansible_collections.ansible.platform` (not automatic for subprocess).
     - name: Execute idle shutdown verification script
       ansible.builtin.command:
         argv:
           - python3
           - "{{ playbook_dir }}/files/idle_shutdown_check.py"
       environment:
+        PYTHONPATH: "{{ playbook_dir }}/../../../../../../"
         GATEWAY_HOSTNAME: "{{ gateway_hostname }}"
         ANSIBLE_PLATFORM_MANAGER_IDLE_POLL_SECONDS: "1"
       register: idle_check

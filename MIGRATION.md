@@ -9,7 +9,7 @@ Confirm the exact collection version and any Red Hat release notes for your envi
 ## What changed (summary)
 
 - **Connection plugin `ansible.platform.http`** is the supported way to route Gateway traffic. It implements `get_client()`, which chooses **direct** (ephemeral manager per task) or **persistent** (reuse one manager process and HTTP session across tasks in a play) mode.
-- **Action plugins** for platform modules call `_get_or_spawn_manager()`, which **prefers** the connection plugin’s `get_client()` when `ansible_connection` is `ansible.platform.http`. They still work with **`ansible_connection: local`** by spawning an **ephemeral** manager (`spawn_ephemeral_client()`), but that path does **not** integrate with the connection plugin’s persistent lifecycle or facts in the same way.
+- **Action plugins** for platform modules call `_get_or_spawn_manager()`, which **prefers** the connection plugin's `get_client()` when `ansible_connection` is `ansible.platform.http`. They still work with **`ansible_connection: local`** by spawning an **ephemeral** manager (`spawn_ephemeral_client()`), but that path does **not** integrate with the connection plugin's persistent lifecycle or facts in the same way.
 - **Direct mode** (default) still uses the same manager-based stack as persistent mode; the difference is **lifecycle** (new ephemeral manager per task vs reuse). Performance tuning is primarily about **persistent** mode and fewer TLS/auth round-trips.
 - **Stale socket recovery**: when reusing a persistent manager, if the socket file exists but the process is gone, the connection plugin detects a **stale socket**, removes it, and spawns a new manager.
 
