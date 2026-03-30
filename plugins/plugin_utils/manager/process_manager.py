@@ -216,7 +216,8 @@ class ProcessManager:
             gateway_config.password or '',
             gateway_config.oauth_token or '',
             str(gateway_config.verify_ssl),
-            str(gateway_config.request_timeout)
+            str(gateway_config.request_timeout),
+            str(gateway_config.idle_timeout),
         ]
 
         logger.debug("Command: %s %s [args: socket_path, socket_dir, identifier, gateway_url, ...]", sys.executable, script_path)

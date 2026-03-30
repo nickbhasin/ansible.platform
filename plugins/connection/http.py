@@ -23,6 +23,10 @@ description:
     Connection parameters that define tenancy (when a new persistent manager is created vs reused):
     C(gateway_hostname) (or C(gateway_url)), credentials (C(gateway_username)/password/token), and host.
     One persistent manager per (play, host, connection params); no sharing across different params.
+  - |
+    Persistent manager subprocess idle shutdown is controlled with C(platform_manager_idle_timeout) or
+    C(ansible_platform_manager_idle_timeout) (seconds; default 3600; 0 disables). See the collection
+    documentation file C(docs/CONNECTION_MODES.md).
 version_added: 1.0.0
 options:
   persistent:

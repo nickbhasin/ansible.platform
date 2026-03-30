@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import base64
 import logging
+import os
 import threading
+import time
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
@@ -26,6 +28,20 @@ from ..platform.retry import retry_http_request, RetryConfig
 from ..platform.types import TransformContext
 
 logger = logging.getLogger(__name__)
+
+# Interval for checking whether the manager subprocess has exceeded idle_timeout (seconds).
+_MANAGER_IDLE_POLL_INTERVAL_SEC = 60.0
+
+
+def _manager_idle_poll_interval_sec() -> float:
+    """Poll interval; default 60s. Override via ANSIBLE_PLATFORM_MANAGER_IDLE_POLL_SECONDS (e.g. tests)."""
+    raw = os.environ.get("ANSIBLE_PLATFORM_MANAGER_IDLE_POLL_SECONDS")
+    if raw is None or raw.strip() == "":
+        return _MANAGER_IDLE_POLL_INTERVAL_SEC
+    try:
+        return max(1.0, float(raw))
+    except ValueError:
+        return _MANAGER_IDLE_POLL_INTERVAL_SEC
 
 
 def _get_requests():
@@ -130,6 +146,12 @@ class PlatformService(BaseAPIClient):
         # Shutdown flag
         self._shutdown_requested = False
         self._shutdown_lock = threading.Lock()
+
+        # Idle shutdown (manager subprocess): last RPC activity and IPC server handle
+        self._last_activity_monotonic = time.monotonic()
+        self._activity_lock = threading.Lock()
+        self._manager_server = None
+        self._idle_monitor_thread = None
 
         # Retry configuration
         self.retry_config = RetryConfig(
@@ -501,6 +523,8 @@ class PlatformService(BaseAPIClient):
         manager_start = time.perf_counter()
 
         logger.info("Executing %s on %s", operation, module_name)
+
+        self.touch_activity()
 
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
         include_nulls = ansible_data_dict.pop('_platform_enforced', False)
@@ -1211,6 +1235,8 @@ class PlatformService(BaseAPIClient):
         Resolve a resource name to ID by GET list with filter.
         Used by mixins to resolve FKs (e.g. service_cluster name -> id).
         """
+        self.touch_activity()
+
         if not lookup_value:
             return None
         if str(lookup_value).isdigit():
@@ -1232,6 +1258,65 @@ class PlatformService(BaseAPIClient):
         if rid is not None:
             self.cache[cache_key] = rid
         return rid
+
+    def touch_activity(self) -> None:
+        """Record RPC activity; extends time until idle shutdown."""
+        with self._activity_lock:
+            self._last_activity_monotonic = time.monotonic()
+
+    def attach_manager_server(self, server: Any) -> None:
+        """Bind the multiprocessing IPC server and start the idle monitor thread."""
+        self._manager_server = server
+        self._start_idle_monitor_if_needed()
+
+    def _start_idle_monitor_if_needed(self) -> None:
+        timeout = float(self.config.idle_timeout)
+        if timeout <= 0:
+            logger.info("PlatformService: manager idle timeout disabled (idle_timeout=%s)", timeout)
+            return
+        if self._idle_monitor_thread is not None:
+            return
+
+        def _idle_monitor_loop() -> None:
+            while True:
+                time.sleep(_manager_idle_poll_interval_sec())
+                with self._shutdown_lock:
+                    if self._shutdown_requested:
+                        return
+                with self._activity_lock:
+                    idle = time.monotonic() - self._last_activity_monotonic
+                if idle >= timeout:
+                    logger.info(
+                        "PlatformService: idle timeout exceeded (%.1fs >= %.1fs); shutting down",
+                        idle,
+                        timeout,
+                    )
+                    try:
+                        self.shutdown()
+                    except Exception as exc:
+                        logger.warning("PlatformService: idle shutdown error: %s", exc)
+                    return
+
+        self._idle_monitor_thread = threading.Thread(
+            target=_idle_monitor_loop,
+            name="platform-manager-idle-monitor",
+            daemon=True,
+        )
+        self._idle_monitor_thread.start()
+        logger.info(
+            "PlatformService: idle monitor started (timeout=%ss, poll_interval=%ss)",
+            timeout,
+            _manager_idle_poll_interval_sec(),
+        )
+
+    def _stop_manager_server_safely(self) -> None:
+        server = self._manager_server
+        if server is None:
+            return
+        try:
+            server.shutdown()
+        except Exception as exc:
+            logger.warning("PlatformService: error stopping manager IPC server: %s", exc)
 
     def shutdown(self) -> dict:
         """
@@ -1267,6 +1352,8 @@ class PlatformService(BaseAPIClient):
             logger.debug("Cache cleared")
         except Exception as e:
             logger.warning("Error clearing cache: %s", e)
+
+        self._stop_manager_server_safely()
 
         logger.info("PlatformService shutdown complete")
         return {"status": "shutdown", "message": "Manager service shut down gracefully"}

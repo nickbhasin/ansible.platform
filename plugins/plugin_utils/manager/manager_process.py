@@ -24,9 +24,9 @@ def main():
     except Exception:
         pass
 
-    # Read configuration from command line args
-    if len(sys.argv) < 10:
-        print(f"ERROR: Expected 9 args, got {len(sys.argv) - 1}", file=sys.stderr)
+    # argv[0]=this script; argv[1..10]=socket_path..idle_timeout (10 args after script name)
+    if len(sys.argv) < 11:
+        print(f"ERROR: Expected 10 args after script, got {len(sys.argv) - 1}", file=sys.stderr)
         print(f"Args received: {sys.argv}", file=sys.stderr)
         sys.exit(1)
 
@@ -50,6 +50,7 @@ def main():
     gateway_token = sys.argv[7] or None
     gateway_validate_certs = sys.argv[8].lower() == 'true'
     gateway_request_timeout = float(sys.argv[9])
+    idle_timeout = float(sys.argv[10])
     pid_file = f"{socket_path}.pid"
     try:
         with open(pid_file, 'w') as f:
@@ -151,7 +152,8 @@ def main():
                 oauth_token=gateway_token,
                 verify_ssl=gateway_validate_certs,
                 request_timeout=gateway_request_timeout,
-                connection_mode='experimental'  # Persistent manager is always experimental mode
+                connection_mode='experimental',  # Persistent manager is always experimental mode
+                idle_timeout=idle_timeout,
             )
             with open(error_log, 'a') as f:
                 f.write("GatewayConfig created successfully\n")
@@ -222,9 +224,16 @@ def main():
             try:
                 if os.path.exists(pid_file):
                     os.remove(pid_file)
-            except Exception:
+            except OSError as ex:
                 with open(error_log, 'a') as f:
-                    f.write(f"Failed to remove PID file on signal exit: {e}\n")
+                    f.write(f"Failed to remove PID file on signal exit: {ex}\n")
+                    f.flush()
+            try:
+                if os.path.exists(socket_path):
+                    os.unlink(socket_path)
+            except OSError as ex:
+                with open(error_log, 'a') as f:
+                    f.write(f"Failed to remove socket on signal exit: {ex}\n")
                     f.flush()
             sys.exit(0)
 
@@ -244,6 +253,7 @@ def main():
             f.flush()
 
         server = manager.get_server()
+        service.attach_manager_server(server)
 
         with open(error_log, 'a') as f:
             f.write("Server obtained, starting serve_forever()\n")
@@ -262,9 +272,16 @@ def main():
             try:
                 if os.path.exists(pid_file):
                     os.remove(pid_file)
-            except Exception:
+            except OSError as ex:
                 with open(error_log, 'a') as f:
-                    f.write(f"Failed to remove PID file on normal exit: {e}\n")
+                    f.write(f"Failed to remove PID file on normal exit: {ex}\n")
+                    f.flush()
+            try:
+                if os.path.exists(socket_path):
+                    os.unlink(socket_path)
+            except OSError as ex:
+                with open(error_log, 'a') as f:
+                    f.write(f"Failed to remove socket on exit: {ex}\n")
                     f.flush()
 
     except Exception as e:

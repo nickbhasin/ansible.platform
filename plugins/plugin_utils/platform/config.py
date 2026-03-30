@@ -25,6 +25,8 @@ class GatewayConfig:
     verify_ssl: bool = True
     request_timeout: float = 10.0
     connection_mode: str = "standard"  # "standard" or "experimental"
+    # Seconds without RPC activity before manager subprocess exits (0 = disabled).
+    idle_timeout: float = 3600.0
 
     def __post_init__(self):
         """Normalize URL after initialization."""
@@ -32,7 +34,13 @@ class GatewayConfig:
         self.base_url = self._normalize_url(self.base_url)
         if original_url != self.base_url:
             logger.debug("Normalized gateway URL: %s -> %s", original_url, self.base_url)
-        logger.info("GatewayConfig initialized: base_url=%s, verify_ssl=%s, timeout=%s", self.base_url, self.verify_ssl, self.request_timeout)
+        logger.info(
+            "GatewayConfig initialized: base_url=%s, verify_ssl=%s, timeout=%s, idle_timeout=%s",
+            self.base_url,
+            self.verify_ssl,
+            self.request_timeout,
+            self.idle_timeout,
+        )
 
     @staticmethod
     def _normalize_url(url: str) -> str:
@@ -133,6 +141,21 @@ def extract_gateway_config(
         host_vars.get('platform_connection_mode') or
         'standard'
     )
+    # Persistent manager subprocess: idle shutdown (seconds; 0 disables)
+    _missing = object()
+    raw_idle = task_args.get('platform_manager_idle_timeout', _missing)
+    if raw_idle is _missing:
+        raw_idle = host_vars.get('platform_manager_idle_timeout', _missing)
+    if raw_idle is _missing:
+        raw_idle = host_vars.get('ansible_platform_manager_idle_timeout', _missing)
+    if raw_idle is None or raw_idle is _missing:
+        manager_idle_timeout = 3600.0
+    else:
+        try:
+            manager_idle_timeout = float(raw_idle)
+        except (TypeError, ValueError):
+            logger.warning("Invalid platform_manager_idle_timeout %r; using default 3600", raw_idle)
+            manager_idle_timeout = 3600.0
 
     if required and not gateway_url:
         logger.error("Gateway URL is required but not found in task_args or host_vars")
@@ -154,7 +177,8 @@ def extract_gateway_config(
         oauth_token=gateway_token,
         verify_ssl=gateway_validate_certs,
         request_timeout=gateway_request_timeout,
-        connection_mode=connection_mode
+        connection_mode=connection_mode,
+        idle_timeout=manager_idle_timeout,
     )
 
     logger.debug("GatewayConfig created successfully")

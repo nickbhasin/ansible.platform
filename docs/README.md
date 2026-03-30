@@ -13,6 +13,7 @@ so developers familiar with that collection find the same patterns and numbering
 | 01 | [01-overview.md](01-overview.md) | All | Problem, vision, personas, user stories, module coverage, doc map |
 | 02 | [02-resource-module-pattern.md](02-resource-module-pattern.md) | All | States (present/absent/exists/enforced), entities vs endpoints, convergence contract |
 | 03 | [03-sdk-architecture.md](03-sdk-architecture.md) | Architects / Senior devs | Persistent connection manager, two connection modes, RPC interface, directory structure |
+| — | [CONNECTION_MODES.md](CONNECTION_MODES.md) | Operators / devs | Persistent vs direct mode, manager `idle_timeout`, polling behavior |
 | 04 | [04-data-model-transformation.md](04-data-model-transformation.md) | Framework devs | Three-tier data flow, Ansible model, API model, transform mixin, ref fields, case studies |
 | 05 | [05-design-principles.md](05-design-principles.md) | All devs | 10 rules governing every decision, quality checklist, human-in-the-loop triggers |
 | 06 | [06-foundation-components.md](06-foundation-components.md) | Framework devs | Full spec: Registry, Loader, BaseTransformMixin, GatewayConfig, PlatformService, PlatformManager, ManagerRPCClient, BaseResourceActionPlugin |
