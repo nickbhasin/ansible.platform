@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Molecule helper: spawn manager with short idle_timeout and assert subprocess exits."""
 
 from __future__ import absolute_import, division, print_function
@@ -8,7 +7,6 @@ import sys
 import time
 from pathlib import Path
 
-# Fast poll for CI (production default is 60s)
 os.environ.setdefault("ANSIBLE_PLATFORM_MANAGER_IDLE_POLL_SECONDS", "1")
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import GatewayConfig

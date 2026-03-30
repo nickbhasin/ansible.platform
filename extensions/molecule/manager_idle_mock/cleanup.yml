@@ -3,6 +3,8 @@
   hosts: localhost
   connection: local
   gather_facts: false
+  vars:
+    ansible_connection: local
   tasks:
     - name: Remove molecule idle test socket files if present
       ansible.builtin.shell: |
@@ -20,3 +22,5 @@
       register: rm_result
       changed_when: false
       failed_when: rm_result.rc != 0
+      vars:
+        ansible_connection: local

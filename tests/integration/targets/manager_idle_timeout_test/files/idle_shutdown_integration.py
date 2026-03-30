@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Integration check: manager subprocess exits after idle_timeout (ansible-test target)."""
 
 from __future__ import annotations
