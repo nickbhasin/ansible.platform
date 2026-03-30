@@ -169,6 +169,16 @@ class ManagerRPCClient:
 
     def close(self) -> None:
         """Close connection to manager."""
-        if hasattr(self, 'manager'):
-            self.manager.shutdown()
-            logger.debug("Disconnected from Platform Manager")
+        # BaseManager only binds .shutdown after start(); we only use connect() to an
+        # existing socket, so there is typically no shutdown (see multiprocessing.managers).
+        if hasattr(self, 'manager') and self.manager is not None:
+            try:
+                shutdown = getattr(self.manager, 'shutdown', None)
+                if callable(shutdown):
+                    shutdown()
+            except Exception as e:
+                logger.debug("Error closing manager client: %s", e)
+            finally:
+                self.manager = None
+        self.service_proxy = None
+        logger.debug("Disconnected from Platform Manager")
